@@ -1,6 +1,6 @@
 {
   "name": "pi-muse-voice",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Voice dictation and audio file transcription for the Pi coding agent, powered by Meta Muse Voice Transcribe.",
   "type": "module",
   "license": "MIT",

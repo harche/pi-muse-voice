@@ -66,14 +66,27 @@ Any format ffmpeg can read is converted automatically. Recordings over 10 minute
 
 ## Configuration
 
-Edit the `CONFIG` block at the top of `extensions/muse-voice.ts`:
+Add a `museVoice` block to `~/.pi/agent/settings.json` (global) or `.pi/settings.json` (one project). **You never need to edit the extension source, so your setup survives `pi update`.** Project settings win over global ones.
+
+```json
+{
+  "museVoice": {
+    "shortcut": "ctrl+shift+v",
+    "languageBias": ["English"],
+    "keywords": ["Kubernetes", "Postgres", "gRPC"],
+    "maxDictationMs": 300000
+  }
+}
+```
 
 | Option | Default | Meaning |
 |---|---|---|
-| `shortcut` | `"ctrl+shift+v"` | Dictation toggle |
+| `shortcut` | `ctrl+shift+v` | Dictation toggle. Falls back to the default if unparseable |
 | `languageBias` | `[]` | Expected languages, e.g. `["English", "French"]`. Empty = auto-detect |
-| `keywords` | `[]` | Vocabulary biasing — **max 20 characters each** |
-| `maxDictationMs` | `5 * 60_000` | Safety stop so a forgotten toggle can't hold the mic open |
+| `keywords` | `[]` | Vocabulary biasing — **max 20 characters each**, longer ones are dropped |
+| `maxDictationMs` | `300000` | Safety stop so a forgotten toggle can't hold the mic open |
+
+Malformed settings are ignored rather than fatal: wrong types fall back to defaults, and an unusable `shortcut` falls back to `ctrl+shift+v` with `/voice` still available.
 
 ### Vocabulary biasing is worth setting
 

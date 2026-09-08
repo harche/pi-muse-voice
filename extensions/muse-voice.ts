@@ -80,26 +80,78 @@ function biasFields(): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
-// CONFIG — tune these.
+// CONFIG — defaults below, overridable from settings.json without editing this
+// file (so your setup survives `pi update`). Add a "museVoice" block to
+// ~/.pi/agent/settings.json, or .pi/settings.json for one project:
+//
+//   { "museVoice": {
+//       "shortcut": "ctrl+shift+v",
+//       "languageBias": ["English"],
+//       "keywords": ["Kubernetes", "Postgres"],
+//       "maxDictationMs": 300000
+//   } }
+//
+// Project settings win over user settings, which win over these defaults.
 // ---------------------------------------------------------------------------
-const CONFIG = {
-	// ctrl+shift+v: the one binding empirically confirmed to reach pi on this
-	// machine. f5 is swallowed by macOS Dictation, and ctrl+space is the macOS
-	// default for "Select the previous input source".
+const DEFAULTS = {
+	// ctrl+shift+v is the default because it survives macOS: f5 is Apple
+	// Dictation, and ctrl+space is "Select the previous input source".
 	shortcut: "ctrl+shift+v",
-	// Language hints, e.g. ["English", "French"]. Empty = auto-detect.
+	// Expected languages, e.g. ["English", "French"]. Empty = auto-detect.
 	languageBias: [] as string[],
-	// Vocabulary biasing: product names, people, places, acronyms, and jargon the
-	// model would otherwise mishear. Empty by default — add your own terms.
+	// Vocabulary biasing: product names, people, acronyms, jargon.
 	// Each entry must be <= 20 characters; see sanitizeKeywords().
-	// Example: ["Kubernetes", "Postgres", "OAuth", "gRPC"]
 	keywords: [] as string[],
-	// Safety stop so a forgotten toggle can't bill an open mic.
+	// Safety stop so a forgotten toggle cannot hold the mic open.
 	// Realtime sessions are capped at 60 min server-side regardless.
 	maxDictationMs: 5 * 60_000,
 	// Chunk size for pacing. 80ms at 24kHz = 3840 bytes.
 	chunkBytes: 3840,
-} as const;
+};
+
+const SETTINGS_KEY = "museVoice";
+
+function readJsonObject(file: string): Record<string, unknown> {
+	try {
+		const parsed = JSON.parse(readFileSync(file, "utf8"));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+	} catch {
+		return {}; // missing or malformed settings must never break startup
+	}
+}
+
+function stringArray(value: unknown, fallback: string[]): string[] {
+	if (!Array.isArray(value)) return fallback;
+	return value.filter((v): v is string => typeof v === "string" && v.length > 0);
+}
+
+function loadConfig(cwd: string): typeof DEFAULTS {
+	// Later sources win: user settings first, then project settings.
+	const merged: Record<string, unknown> = {};
+	for (const file of [join(configDir(), "settings.json"), join(cwd, ".pi", "settings.json")]) {
+		const block = readJsonObject(file)[SETTINGS_KEY];
+		if (block && typeof block === "object" && !Array.isArray(block)) {
+			Object.assign(merged, block);
+		}
+	}
+	return {
+		shortcut:
+			typeof merged.shortcut === "string" && merged.shortcut ? merged.shortcut : DEFAULTS.shortcut,
+		languageBias: stringArray(merged.languageBias, DEFAULTS.languageBias),
+		keywords: stringArray(merged.keywords, DEFAULTS.keywords),
+		maxDictationMs:
+			typeof merged.maxDictationMs === "number" && merged.maxDictationMs > 0
+				? merged.maxDictationMs
+				: DEFAULTS.maxDictationMs,
+		chunkBytes:
+			typeof merged.chunkBytes === "number" && merged.chunkBytes > 0
+				? merged.chunkBytes
+				: DEFAULTS.chunkBytes,
+	};
+}
+
+// Replaced at extension load, so /reload picks up settings edits.
+let CONFIG = { ...DEFAULTS };
 
 // Providers to borrow the credential from, in order. Both point at
 // https://api.meta.ai/v1 in models.json and carry the same Model API key.
@@ -427,21 +479,36 @@ async function transcribeWav(wav: Buffer, mode: string, sessionId: string): Prom
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerShortcut(CONFIG.shortcut, {
-		description: "Toggle Muse voice dictation",
-		handler: async (ctx) => {
-			if (active) stopDictation(ctx);
-			else startDictation(ctx, `pi-${Date.now().toString(36)}`);
-		},
-	});
+	// Resolve settings before registering anything: the shortcut is bound here,
+	// so it has to reflect settings.json on this load rather than the default.
+	CONFIG = loadConfig(process.cwd());
+
+	const toggle = async (ctx: ExtensionContext) => {
+		if (active) stopDictation(ctx);
+		else startDictation(ctx, `pi-${Date.now().toString(36)}`);
+	};
+
+	// The shortcut is user-supplied, so it is a runtime string rather than one of
+	// the KeyId literals. An unparseable value must not take the extension down
+	// with it: fall back to the default binding, and /voice always still works.
+	type ShortcutId = Parameters<typeof pi.registerShortcut>[0];
+	for (const candidate of [CONFIG.shortcut, DEFAULTS.shortcut]) {
+		try {
+			pi.registerShortcut(candidate as ShortcutId, {
+				description: "Toggle Muse voice dictation",
+				handler: toggle,
+			});
+			CONFIG.shortcut = candidate;
+			break;
+		} catch {
+			// try the default next
+		}
+	}
 
 	pi.registerCommand("voice", {
 		description: "Toggle Muse voice dictation",
 		// Command handlers receive (args, ctx) — unlike shortcut handlers, which take ctx alone.
-		handler: async (_args, ctx) => {
-			if (active) stopDictation(ctx);
-			else startDictation(ctx, `pi-${Date.now().toString(36)}`);
-		},
+		handler: async (_args, ctx) => toggle(ctx),
 	});
 
 	pi.registerTool({
