@@ -100,62 +100,6 @@ With `keywords: ["Muse"]`:
 
 Add your project's jargon — service names, acronyms, libraries. It steers recognition but does not guarantee spelling.
 
-## Capabilities and limits
-
-25 languages with code-switching, speaker diarization, model-detected turn boundaries, and long-audio streaming.
-
-**Not available:** word-level timestamps (turn-level only), confidence scores, sound event detection, emotion detection, transcript reformatting.
-
-| Limit | Value |
-|---|---|
-| File request body | 32 MB |
-| File audio duration | 10 min (auto-split by this extension) |
-| Realtime session | 60 min |
-| Concurrent streams | 8 |
-| Streams per hour | 1,000 |
-
-## Troubleshooting
-
-### The keyboard shortcut does nothing
-
-Almost always the OS or terminal eating the key before Pi sees it. Verified on macOS:
-
-| Key | Problem |
-|---|---|
-| `ctrl+space` | macOS default for *Select the previous input source* |
-| `f5` | macOS **Dictation** — pops up Apple's own dictation dialog |
-| `f1`–`f6` | Mac media keys (brightness, Mission Control, Spotlight) |
-
-`ctrl+shift+v` is the default because it survives. To confirm whether a key reaches Pi: press it while dictation is running. If the status line changes to `● finishing…`, the key was delivered. If nothing changes at all, it wasn't.
-
-Use `/voice` to work around any keybinding problem.
-
-### `503` from the transcribe endpoint
-
-**A keyword longer than 20 characters returns `503`, deterministically.** This is undocumented, and `503` is misleading — it's a validation error, not a server fault, so retrying never helps.
-
-Found by bisection: 20 characters passes, 21 fails. Meta's own documentation example, `"Muse Voice Transcribe"`, is 21 characters and always fails. This extension filters over-long keywords before sending, so you shouldn't hit it — but it's worth knowing if you call the API directly.
-
-### No audio captured
-
-Check `sox` can reach your microphone, and grant your terminal mic permission in System Settings → Privacy & Security → Microphone:
-
-```bash
-sox -d -t raw -b 16 -e signed-integer -r 24000 -c 1 - trim 0 2 | wc -c
-# should print 96000 (2 seconds x 48000 bytes/sec)
-```
-
-## Implementation notes
-
-A few non-obvious things, in case you're building something similar:
-
-- **`ws`, not Node's built-in `WebSocket`.** Node 22+ negotiates HTTP/2 via ALPN, and `api.meta.ai` advertises `h2`. WebSocket-over-HTTP/2 fails against this endpoint with an immediate `1006`, before `open` fires. `ws` is HTTP/1.1-only and connects fine. Same reason `curl` needs `--http1.1` to get `101 Switching Protocols`.
-- **Realtime auth goes in the first frame**, not the HTTP upgrade — `authorization.accessToken`. The `Authorization` header is ignored there. The file endpoint is the opposite: it uses the header.
-- **Partials are cumulative**, so each one *replaces* the previous. That maps directly onto `setEditorText`, which is how text updates live in the prompt box. `pasteToEditor` would be wrong: it's bracketed paste and appends at the cursor.
-- **`endStream` ends the session, not a turn.** The socket stays open afterwards so the server can flush the final transcript; closing early discards it.
-- **The completion signal depends on mode.** `PUSH_TO_TALK` (used for dictation) finishes with a `transcript` event carrying `final: true` — it never emits `speechComplete`. `ENDPOINTING` and `DIARIZATION` use `speechComplete` per `turnId`.
-- **The final transcript is post-processed** and differs from the last partial: `"how is the weather today"` becomes `"How is the weather today?"`.
-
 ## Privacy
 
 Audio is sent to Meta's API for transcription. Review [Meta's Model API terms](https://ai.developer.meta.com/) before dictating anything sensitive. This extension stores nothing and transmits only to `api.meta.ai`.
