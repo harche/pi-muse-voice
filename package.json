@@ -1,0 +1,64 @@
+{
+  "name": "pi-muse-voice",
+  "version": "0.1.0",
+  "description": "Voice dictation and audio file transcription for the Pi coding agent, powered by Meta Muse Voice Transcribe.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Harshal Patil",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "coding-agent",
+    "speech-to-text",
+    "transcription",
+    "dictation",
+    "voice",
+    "asr",
+    "diarization",
+    "meta",
+    "muse-voice-transcribe"
+  ],
+  "homepage": "https://github.com/harche/pi-muse-voice#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harche/pi-muse-voice.git"
+  },
+  "bugs": {
+    "url": "https://github.com/harche/pi-muse-voice/issues"
+  },
+  "files": [
+    "extensions/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/muse-voice.ts"
+    ]
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typebox": "^1.3.7",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
